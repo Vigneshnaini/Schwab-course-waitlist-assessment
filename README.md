@@ -1,44 +1,44 @@
 # Course Waitlist Assessment
 
-A focused, AI-assisted engineering assessment implementing enrollment, dropping, and FIFO waitlist promotion for one course offering.
+An in-memory service that handles enrollment, dropping, and FIFO waitlist promotion
+for a single course offering. Built with Python and FastAPI, with automated tests
+and design documentation.
 
-## Overview
+## Features
 
-This project provides a small in-memory course-registration service. It supports:
+- Enrolls eligible learners while seats are available
+- Adds eligible learners to a FIFO waitlist when the course is full
+- Rejects duplicate enrollment and duplicate waitlist requests
+- Rejects learners who do not meet the prerequisite (they never join the waitlist)
+- Drops enrolled learners and promotes the earliest eligible waitlisted learner
+- Returns clear results for invalid and repeated requests without changing state
+- Serializes state changes with a lock so simultaneous requests cannot exceed capacity
 
-- Enrolling eligible learners while seats are available
-- Adding eligible learners to a FIFO waitlist when the course is full
-- Preventing duplicate enrollment and duplicate waitlist entries
-- Dropping enrolled learners
-- Automatically promoting the earliest eligible learner from the waitlist when a seat opens
-- Returning clear outcomes for invalid and repeated requests
+Out of scope by design: frontend, database, authentication, payments, deployment,
+course catalog, multi-term registration, and a configurable policy engine.
 
-The project intentionally does not include a frontend, database, authentication, payments, deployment, course catalog, multi-term registration, or configurable policy engine.
+## Requirements
 
-## Technology
-
-- Python 3.10+
-- FastAPI
-- Uvicorn
-- pytest
-- httpx2
+- Python 3.10 or newer (tested on 3.13)
+- Dependencies in `requirements.txt`: FastAPI, Uvicorn, pytest, httpx2
+  (`httpx2` is required by FastAPI's `TestClient`)
 
 ## Project Structure
 
-```
+```text
 app/
   __init__.py
-  models.py                 Learner and course-state data structures
-  service.py                Enrollment, drop, and waitlist business logic
-  main.py                   FastAPI endpoints
+  models.py              Learner and course-state data structures
+  service.py             Enrollment, drop, and waitlist business logic
+  main.py                FastAPI endpoints and HTTP status mapping
 
 tests/
-  test_registration.py      Automated tests
+  test_registration.py   Service, concurrency, and API tests (24 tests)
 
 docs/
-  design-spec.md            Design decisions and assumptions
-  ai-use-record.md          AI-assisted engineering record
-  limitations.md            Limitations and follow-up risks
+  design-spec.md         Design, invariants, assumptions, trade-offs
+  ai-use-record.md       AI-assisted engineering record
+  limitations.md         Limitations and follow-up risks
 
 README.md
 requirements.txt
@@ -47,112 +47,129 @@ requirements.txt
 
 ## Setup
 
-### 1. Clone the repository
+**1. Clone the repository**
 
-```powershell
+```bash
 git clone https://github.com/Vigneshnaini/Schwab-course-waitlist-assessment.git
 cd Schwab-course-waitlist-assessment
 ```
 
-### 2. Create and activate a virtual environment
+**2. Create and activate a virtual environment**
+
+Windows (PowerShell):
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
 
-### 3. Install dependencies
+macOS / Linux:
 
-```powershell
+```bash
+python -m venv .venv
+source .venv/bin/activate
+```
+
+**3. Install dependencies**
+
+```bash
 python -m pip install -r requirements.txt
 ```
 
-## Run Automated Tests
+## Run the Tests
 
-```powershell
-python -m pytest
+From the project root:
+
+```bash
+python -m pytest -v
 ```
 
-Expected result:
+Expected result: `24 passed`.
 
-```text
-24 passed
-```
+The tests cover:
 
-The tests cover available capacity, full-capacity waitlisting, duplicate enrollment and waitlist requests, prerequisite rejection, invalid enrollment and drop requests, FIFO promotion, multiple drops, repeated drops, and state integrity.
+- available capacity and full-capacity waitlisting
+- duplicate enrollment and duplicate waitlist requests
+- prerequisite rejection
+- invalid enrollment and drop requests
+- FIFO promotion across multiple drops
+- skip-and-keep-position for ineligible waitlisted learners
+- repeated and invalid drops leaving state unchanged
+- concurrent enroll and drop requests (barrier-synchronized threads)
+- HTTP status-code mapping through the API
 
 ## Run the API
 
-```powershell
+```bash
 python -m uvicorn app.main:app --reload
 ```
 
-The API runs at `http://127.0.0.1:8000`.
+The API runs at `http://127.0.0.1:8000`. Interactive Swagger UI is at
+`http://127.0.0.1:8000/docs`. Stop the server with `Ctrl + C`.
 
-Open Swagger UI for interactive testing:
+The demo service starts with a capacity of 2. State is held in memory, so
+restarting the server (including an automatic `--reload` restart after a file
+change) clears all enrollments.
 
-```text
-http://127.0.0.1:8000/docs
-```
+## API Reference
 
-Stop the application with `Ctrl + C`.
-
-## API Endpoints
-
-### Enroll a learner
-
-`POST /enroll`
+### `POST /enroll`
 
 ```json
-{
-  "learner_id": "learner-1",
-  "prerequisite_completed": true
-}
+{ "learner_id": "learner-1", "prerequisite_completed": true }
 ```
 
-Possible outcomes:
-
-```text
-enrolled
-waitlisted
-already_enrolled
-already_waitlisted
-prerequisite_not_met
-invalid_request
-```
-
-### Drop a learner
-
-`POST /drop`
+### `POST /drop`
 
 ```json
-{
-  "learner_id": "learner-1"
-}
+{ "learner_id": "learner-1" }
 ```
 
-A successful drop automatically promotes the earliest eligible learner from the waitlist when one exists.
+A successful drop promotes the earliest eligible waitlisted learner, if any, and
+returns their ID as `promoted_learner_id`.
 
-### View course status
+### `GET /status`
 
-`GET /status`
+Returns the capacity, the enrolled learner IDs, and the waitlisted learner IDs in
+FIFO order.
 
-The response includes course capacity, enrolled learner IDs, and waitlisted learner IDs in FIFO order.
+### Result statuses and HTTP codes
 
-## Assumptions
+| Service status | HTTP code | Endpoint |
+|----------------|-----------|----------|
+| `enrolled`, `waitlisted`, `dropped` | 200 | enroll / drop |
+| `invalid_request` | 400 | enroll / drop |
+| `not_enrolled` | 404 | drop |
+| `already_enrolled`, `already_waitlisted` | 409 | enroll |
+| `prerequisite_not_met` | 422 | enroll |
+
+Malformed request bodies (missing fields, wrong types) are rejected by FastAPI
+with 422 before reaching the service.
+
+## Assumptions and Policies
 
 - The service manages one course offering only.
-- The API demonstration uses a capacity of two learners.
-- A learner must meet the prerequisite to enroll or initially join the waitlist.
+- `prerequisite_completed` is a boolean asserted by the caller. There is no
+  transcript or identity integration.
+- A learner who does not meet the prerequisite is rejected at request time and
+  never enrolls or joins the waitlist.
 - Learner IDs are trimmed before processing and treated as case-sensitive.
-- Eligibility is checked on enrollment and rechecked during promotion.
-- If an ineligible learner is encountered during promotion, they remain waitlisted and are requeued at the back while the service looks for the next eligible learner.
-- The application stores data in memory, so restarting it clears course state.
+- Eligibility is rechecked during promotion. An ineligible learner found there is
+  **skipped and keeps their original waitlist position**; the earliest eligible
+  learner behind them is promoted, and the skipped learner is re-evaluated on later
+  drops. Through the API this path is not currently reachable, so it is covered by
+  unit tests that place an ineligible learner directly on the waitlist.
+- Dropping a learner who is only waitlisted returns `not_enrolled`. There is no
+  leave-waitlist operation.
+- A single `threading.Lock` makes enroll, drop, and status calls atomic within one
+  process. Multiple workers or processes would need a database transaction or row
+  lock.
+- Data is stored in memory only.
 
-## Supporting Documentation
+## Documentation
 
-The `docs/` folder contains:
-
-- `design-spec.md` - service design, assumptions, invariants, and trade-offs
-- `ai-use-record.md` - AI-assisted engineering prompts, decisions, and verification
-- `limitations.md` - current limitations and production follow-up risks
+- [`docs/design-spec.md`](docs/design-spec.md): service boundary, data model,
+  invariants, promotion rule, concurrency approach, trade-offs
+- [`docs/ai-use-record.md`](docs/ai-use-record.md): AI prompts, decisions, and
+  verification evidence
+- [`docs/limitations.md`](docs/limitations.md): limitations and follow-up risks
