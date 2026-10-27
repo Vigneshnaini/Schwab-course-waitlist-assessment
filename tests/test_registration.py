@@ -7,11 +7,6 @@ from app import main
 from app.models import Learner
 from app.service import CourseRegistrationService
 
-
-# ---------------------------------------------------------------------------
-# Enrollment and capacity
-# ---------------------------------------------------------------------------
-
 def test_enrolls_learner_when_capacity_is_available():
     service = CourseRegistrationService(capacity=2)
 
@@ -29,11 +24,6 @@ def test_eligible_learner_is_waitlisted_when_course_is_full():
 
     assert result["status"] == "waitlisted"
     assert service.get_status()["waitlist"] == ["learner-2"]
-
-
-# ---------------------------------------------------------------------------
-# Duplicate requests
-# ---------------------------------------------------------------------------
 
 def test_duplicate_enrollment_does_not_create_duplicate_record():
     service = CourseRegistrationService(capacity=2)
@@ -56,10 +46,6 @@ def test_duplicate_waitlist_request_does_not_create_duplicate_record():
     assert service.get_status()["waitlist"] == ["learner-2"]
 
 
-# ---------------------------------------------------------------------------
-# Prerequisite failures
-# ---------------------------------------------------------------------------
-
 def test_learner_who_does_not_meet_prerequisite_is_not_enrolled():
     service = CourseRegistrationService(capacity=2)
 
@@ -79,10 +65,6 @@ def test_ineligible_learner_is_not_waitlisted_when_course_is_full():
     assert service.get_status()["enrolled"] == ["learner-1"]
     assert service.get_status()["waitlist"] == []
 
-
-# ---------------------------------------------------------------------------
-# Drop and FIFO promotion
-# ---------------------------------------------------------------------------
 
 def test_drop_promotes_first_waitlisted_learner_in_fifo_order():
     service = CourseRegistrationService(capacity=1)
@@ -113,12 +95,6 @@ def test_fifo_order_is_preserved_across_multiple_drops():
     assert service.get_status()["enrolled"] == ["learner-3", "learner-4"]
     assert service.get_status()["waitlist"] == []
 
-
-# ---------------------------------------------------------------------------
-# Ineligible learner on the waitlist (skip but keep position)
-# These tests insert directly into service state because the public API
-# rejects ineligible learners before they can join the waitlist.
-# ---------------------------------------------------------------------------
 
 def test_ineligible_waitlisted_learner_is_skipped_during_promotion():
     service = CourseRegistrationService(capacity=1)
@@ -158,10 +134,6 @@ def test_no_promotion_when_all_waitlisted_learners_are_ineligible():
     assert service.get_status()["enrolled"] == []
     assert service.get_status()["waitlist"] == ["learner-2"]
 
-
-# ---------------------------------------------------------------------------
-# Invalid and repeated requests
-# ---------------------------------------------------------------------------
 
 def test_invalid_and_repeated_drops_do_not_change_course_state():
     service = CourseRegistrationService(capacity=1)
@@ -204,10 +176,6 @@ def test_repeated_drop_after_promotion_does_not_change_state():
     assert service.get_status()["enrolled"] == ["learner-2"]
     assert service.get_status()["waitlist"] == ["learner-3"]
 
-
-# ---------------------------------------------------------------------------
-# Concurrency (regression guards; see DESIGN.md for the caveat about the GIL)
-# ---------------------------------------------------------------------------
 
 def _run_threads(target, count, args_for=None):
     threads = [
@@ -274,10 +242,6 @@ def test_concurrent_drops_of_same_learner_promote_only_once():
     assert service.get_status()["enrolled"] == ["learner-2"]
     assert service.get_status()["waitlist"] == ["learner-3"]
 
-
-# ---------------------------------------------------------------------------
-# HTTP API (status-code mapping)
-# ---------------------------------------------------------------------------
 
 @pytest.fixture
 def client(monkeypatch):
