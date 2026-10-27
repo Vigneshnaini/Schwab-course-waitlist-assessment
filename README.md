@@ -21,6 +21,7 @@ The project intentionally does not include a frontend, database, authentication,
 - FastAPI
 - Uvicorn
 - pytest
+- httpx2
 
 ## Project Structure
 
@@ -75,7 +76,7 @@ python -m pytest
 Expected result:
 
 ```text
-12 passed
+24 passed
 ```
 
 The tests cover available capacity, full-capacity waitlisting, duplicate enrollment and waitlist requests, prerequisite rejection, invalid enrollment and drop requests, FIFO promotion, multiple drops, repeated drops, and state integrity.
